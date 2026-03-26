@@ -1,22 +1,83 @@
 # config.py
-# ⚡ Configuración principal del KHASAM BOT
+# 💀 KHASAM BOT CONFIG - v2.0
 
-# TOKEN de tu bot en Telegram
-TOKEN = "8783635581:AAEEAqLo8kAair708D8E23g_mH10oiIriGo"  # Reemplaza con el token real de tu bot
+import os
 
-# Carpeta temporal (no guarda permanentemente archivos)
-TEMP_PATH = "/data/data/com.termux/files/home/temp/"
+# -----------------------------
+# 🔹 TOKEN DEL BOT
+# -----------------------------
+# Reemplaza con tu token real de BotFather
+BOT_TOKEN = "8783635581:AAEEAqLo8kAair708D8E23g_mH10oiIriGo"
 
-# Formatos y opciones predeterminadas
-VIDEO_FORMAT = "bestvideo[height<=1080]+bestaudio/best"
-AUDIO_FORMAT = "mp3"
+# -----------------------------
+# 🔹 PATH DE DESCARGA
+# -----------------------------
+# Carpeta temporal donde se guardan los archivos antes de enviarlos
+# Si quieres que no se guarden, deja como None
+TEMP_DOWNLOAD_PATH = None  # o "/sdcard/Download" para guardar temporalmente
 
-# Descarga rápida / ultra flash
-YTDLP_THREADS = 32  # Número de fragmentos concurrentes
-ARIA2_ARGS = "-x 32 -s 32 -k 1M"
+# -----------------------------
+# 🔹 OPCIONES DE DESCARGA
+# -----------------------------
+# Formato de salida por defecto
+DEFAULT_FORMATS = {
+    "mp4": "bestvideo[height<=1080]+bestaudio/best[height<=1080]",
+    "mp3": "bestaudio/best"
+}
 
-# Geo bypass para plataformas bloqueadas
-GEO_BYPASS = True
+# Fragmentos concurrentes (velocidad máxima)
+FRAGMENTS = 16
 
-# Límite de tamaño recomendado para enviar por Telegram
-TELEGRAM_LIMIT_MB = 50
+# Número de reintentos por fragmento
+FRAGMENT_RETRIES = 100
+
+# Número total de reintentos por descarga
+TOTAL_RETRIES = 20
+
+# Downloader externo (aria2c recomendado para ultra velocidad)
+DOWNLOADER = "aria2c"
+DOWNLOADER_ARGS = "-x 16 -s 16 -k 1M"
+
+# -----------------------------
+# 🔹 COLA DE DESCARGA
+# -----------------------------
+# Limitar descargas simultáneas
+MAX_CONCURRENT_DOWNLOADS = 2  # Cambiar según RAM/dispositivo
+
+# Lista temporal de URLs en cola
+DOWNLOAD_QUEUE = []
+
+# -----------------------------
+# 🔹 MENSAJES DEL BOT
+# -----------------------------
+MESSAGES = {
+    "start": "💀 KHASAM BOT ACTIVADO\n\nEnvía un link:\n🎵 MP3\n🎬 MP4\n\n⚡ Sistema modular activo",
+    "download_start": "⚡ Descargando tu archivo... Esto puede tardar unos segundos",
+    "download_progress": "📊 Progreso: {progress}%",
+    "download_complete": "✅ Descarga lista, enviando ahora...",
+    "error": "❌ Ocurrió un error en la descarga o el enlace es inválido"
+}
+
+# -----------------------------
+# 🔹 LOGGING / DEBUG
+# -----------------------------
+DEBUG = True  # True = muestra logs detallados, False = logs mínimos
+
+# -----------------------------
+# 🔹 UTILIDADES
+# -----------------------------
+def add_to_queue(url: str):
+    """Agrega un link a la cola de descargas"""
+    DOWNLOAD_QUEUE.append(url)
+
+def pop_from_queue():
+    """Saca el primer link de la cola"""
+    if DOWNLOAD_QUEUE:
+        return DOWNLOAD_QUEUE.pop(0)
+    return None
+
+# -----------------------------
+# 🔹 OTROS AJUSTES
+# -----------------------------
+# Evitar guardar archivos en disco si TEMP_DOWNLOAD_PATH = None
+STREAM_DIRECTLY = True
