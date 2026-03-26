@@ -4,9 +4,9 @@ import os
 import glob
 
 TEMP_PATH = "/data/data/com.termux/files/home/temp/"
-
 os.makedirs(TEMP_PATH, exist_ok=True)
 
+# Ejecutar comando con progreso
 async def run_cmd(cmd, progress_callback):
     process = await asyncio.create_subprocess_shell(
         cmd,
@@ -18,7 +18,6 @@ async def run_cmd(cmd, progress_callback):
         line = await process.stdout.readline()
         if not line:
             break
-
         text = line.decode("utf-8", errors="ignore")
 
         match = re.search(r'(\d{1,3}\.\d+)%', text)
@@ -26,11 +25,11 @@ async def run_cmd(cmd, progress_callback):
             await progress_callback(match.group(1))
 
     await process.wait()
+    return process.returncode
 
-# 🎬 MP4
+# MP4 descarga Flash
 async def descargar_mp4(link, progress_callback):
     output = TEMP_PATH + "%(title)s.%(ext)s"
-
     cmd = f'''
     yt-dlp \
     -N 32 \
@@ -41,28 +40,30 @@ async def descargar_mp4(link, progress_callback):
     --merge-output-format mp4 \
     --no-playlist \
     --newline \
-    -o "{output}" "{link}"
+    --geo-bypass \
+    "{link}" -o "{output}"
     '''
 
     await run_cmd(cmd, progress_callback)
-
     files = glob.glob(TEMP_PATH + "*.mp4")
+    if not files:
+        raise Exception("❌ No se pudo descargar el video. Link inválido o protegido.")
     return max(files, key=os.path.getctime)
 
-
-# 🎵 MP3
+# MP3 descarga Flash
 async def descargar_mp3(link, progress_callback):
     output = TEMP_PATH + "%(title)s.%(ext)s"
-
     cmd = f'''
     yt-dlp \
     -x --audio-format mp3 \
+    -N 16 \
     --no-playlist \
     --newline \
-    -o "{output}" "{link}"
+    --geo-bypass \
+    "{link}" -o "{output}"
     '''
-
     await run_cmd(cmd, progress_callback)
-
     files = glob.glob(TEMP_PATH + "*.mp3")
+    if not files:
+        raise Exception("❌ No se pudo descargar el audio. Link inválido o protegido.")
     return max(files, key=os.path.getctime)
