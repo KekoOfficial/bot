@@ -1,107 +1,75 @@
-from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+# bot.py
 import asyncio
-import os
+from telegram import Update
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes, MessageHandler, filters
+from downloader import download
+from config import BOT_TOKEN, MESSAGES, DOWNLOAD_QUEUE, MAX_CONCURRENT_DOWNLOADS, add_to_queue, pop_from_queue
 
-from config import TOKEN, TEMP_PATH
-from downloader import descargar_mp3, descargar_mp4
+# Para manejar descargas simultáneas
+current_downloads = 0
 
-# Cola de descargas
-queue = asyncio.Queue()
-
-async def add_to_queue(job):
-    await queue.put(job)
-
-async def worker():
-    while True:
-        job = await queue.get()
-        try:
-            await job()
-        except Exception as e:
-            print("❌ Error en job:", e)
-        queue.task_done()
-
-# Comando /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    await update.message.reply_text(
-        "💀 KHASAM BOT SYSTEM\n\n"
-        "Comandos:\n"
-        "/mp3 <link>\n/mp4 <link>\n\n"
-        "⚡ Descarga ultra rápida + envío directo"
-    )
+    await update.message.reply_text(MESSAGES["start"])
 
-# Comando /mp4
-async def mp4(update: Update, context: ContextTypes.DEFAULT_TYPE):
+async def download_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    global current_downloads
     if not context.args:
-        await update.message.reply_text("⚠️ Usa: /mp4 <link>")
+        await update.message.reply_text("❌ Envía un enlace después del comando, ej: /mp4 https://...")
         return
-    link = context.args[0]
-    msg = await update.message.reply_text("🎬 En cola...")
 
-    async def job():
-        last = "0"
-        async def progress(p):
-            nonlocal last
-            if p != last:
-                last = p
-                try:
-                    await msg.edit_text(f"🎬 Descargando...\n⚡ {p}%")
-                except:
-                    pass
-        try:
-            file_path = await descargar_mp4(link, progress)
-            await msg.edit_text("📤 Enviando video...")
-            with open(file_path, "rb") as f:
-                await update.message.reply_video(f)
-            os.remove(file_path)
-            await msg.edit_text("✅ Video enviado 🚀")
-        except Exception as e:
-            await msg.edit_text(f"❌ {e}")
+    url = context.args[0]
+    file_type = update.message.text[1:]  # mp3 o mp4
+    add_to_queue((url, file_type, update))
 
-    await add_to_queue(job)
+    await update.message.reply_text(f"⚡ Encolado: {url}")
 
-# Comando /mp3
-async def mp3(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not context.args:
-        await update.message.reply_text("⚠️ Usa: /mp3 <link>")
-        return
-    link = context.args[0]
-    msg = await update.message.reply_text("🎧 En cola...")
+    # Procesar cola
+    await process_queue()
 
-    async def job():
-        last = "0"
-        async def progress(p):
-            nonlocal last
-            if p != last:
-                last = p
-                try:
-                    await msg.edit_text(f"🎧 Descargando...\n⚡ {p}%")
-                except:
-                    pass
-        try:
-            file_path = await descargar_mp3(link, progress)
-            await msg.edit_text("📤 Enviando audio...")
-            with open(file_path, "rb") as f:
-                await update.message.reply_audio(f)
-            os.remove(file_path)
-            await msg.edit_text("✅ Audio enviado 🚀")
-        except Exception as e:
-            await msg.edit_text(f"❌ {e}")
+async def process_queue():
+    global current_downloads
+    while current_downloads < MAX_CONCURRENT_DOWNLOADS and DOWNLOAD_QUEUE:
+        url, file_type, update = pop_from_queue()
+        current_downloads += 1
+        await send_download(update, url, file_type)
+        current_downloads -= 1
 
-    await add_to_queue(job)
+async def send_download(update: Update, url: str, file_type: str):
+    try:
+        msg = await update.message.reply_text(MESSAGES["download_start"])
 
-# MAIN
-def main():
-    app = ApplicationBuilder().token(TOKEN).build()
+        async def progress_hook(d):
+            if d['status'] == 'downloading':
+                percent = d.get('_percent_str', '0.0%').strip()
+                await msg.edit_text(MESSAGES["download_progress"].format(progress=percent))
+
+        await download(url, file_type, progress_callback=progress_hook)
+        await msg.edit_text(MESSAGES["download_complete"])
+        # Enviar directo al chat (stream)
+        # Si TEMP_DOWNLOAD_PATH=None, yt-dlp hace streaming
+        # Aquí puedes usar context.bot.send_document si quieres enviar el archivo
+    except Exception as e:
+        await update.message.reply_text(f"{MESSAGES['error']}\n{e}")
+
+# -------------------
+# Inicialización del bot
+# -------------------
+async def main():
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
     app.add_handler(CommandHandler("start", start))
-    app.add_handler(CommandHandler("mp3", mp3))
-    app.add_handler(CommandHandler("mp4", mp4))
-
-    loop = asyncio.get_event_loop()
-    loop.create_task(worker())
-
+    app.add_handler(CommandHandler(["mp3","mp4"], download_command))
+    # Evitar conflicto con sesiones viejas
+    await app.bot.delete_webhook(drop_pending_updates=True)
+    await app.start()
     print("💀 BOT ACTIVO STREAM...")
-    app.run_polling(drop_pending_updates=True)
+    await app.updater.start_polling(drop_pending_updates=True)
+    await app.idle()
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except RuntimeError:
+        # Deprecation warning loop
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(main())
