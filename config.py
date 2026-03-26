@@ -1,0 +1,2 @@
+TOKEN = "8783635581:AAEEAqLo8kAair708D8E23g_mH10oiIriGo"
+DOWNLOAD_PATH = "/sdcard/Download/"
