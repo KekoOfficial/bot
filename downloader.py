@@ -1,71 +1,42 @@
+# downloader.py
 import asyncio
-import re
-import os
-import glob
-from config import TEMP_PATH, VIDEO_FORMAT, AUDIO_FORMAT, YTDLP_THREADS, ARIA2_ARGS, GEO_BYPASS
+import yt_dlp
+from config import TEMP_DOWNLOAD_PATH, DEFAULT_FORMATS, FRAGMENTS, FRAGMENT_RETRIES, TOTAL_RETRIES, DOWNLOADER, DOWNLOADER_ARGS, STREAM_DIRECTLY
 
-# Crear carpeta temporal si no existe
-os.makedirs(TEMP_PATH, exist_ok=True)
+async def download(url: str, file_type: str, progress_callback=None):
+    """
+    Descarga un archivo usando yt-dlp y envía progreso.
+    :param url: URL del video/audio
+    :param file_type: 'mp3' o 'mp4'
+    :param progress_callback: función async(progress_dict)
+    """
+    ydl_opts = {
+        "format": DEFAULT_FORMATS[file_type],
+        "noplaylist": True,
+        "concurrent_fragment_downloads": FRAGMENTS,
+        "fragment_retries": FRAGMENT_RETRIES,
+        "retries": TOTAL_RETRIES,
+        "quiet": True,
+        "no_warnings": True,
+        "progress_hooks": [progress_callback] if progress_callback else [],
+        "outtmpl": TEMP_DOWNLOAD_PATH or "%(title)s.%(ext)s",
+        "postprocessors": [],
+    }
 
-# Ejecutar comando yt-dlp con progreso
-async def run_cmd(cmd, progress_callback):
-    process = await asyncio.create_subprocess_shell(
-        cmd,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.STDOUT
-    )
+    if file_type == "mp3":
+        ydl_opts["postprocessors"].append({
+            "key": "FFmpegExtractAudio",
+            "preferredcodec": "mp3",
+            "preferredquality": "192",
+        })
 
-    while True:
-        line = await process.stdout.readline()
-        if not line:
-            break
-        text = line.decode("utf-8", errors="ignore")
+    if STREAM_DIRECTLY:
+        ydl_opts["outtmpl"] = "-"  # stream directo
 
-        # Buscar porcentaje de progreso
-        match = re.search(r'(\d{1,3}\.\d+)%', text)
-        if match:
-            await progress_callback(match.group(1))
+    if DOWNLOADER:
+        ydl_opts["external_downloader"] = DOWNLOADER
+        ydl_opts["external_downloader_args"] = DOWNLOADER_ARGS.split()
 
-    await process.wait()
-    return process.returncode
-
-# Descarga MP4 (video)
-async def descargar_mp4(link, progress_callback):
-    output = TEMP_PATH + "%(title)s.%(ext)s"
-    geo = "--geo-bypass" if GEO_BYPASS else ""
-    cmd = f'''
-    yt-dlp -N {YTDLP_THREADS} \
-    --concurrent-fragments {YTDLP_THREADS} \
-    --downloader aria2c \
-    --downloader-args "aria2c:{ARIA2_ARGS}" \
-    -f "{VIDEO_FORMAT}" {geo} \
-    --merge-output-format mp4 \
-    --no-playlist \
-    --newline \
-    -o "{output}" "{link}"
-    '''
-    await run_cmd(cmd, progress_callback)
-
-    files = glob.glob(TEMP_PATH + "*.mp4")
-    if not files:
-        raise Exception("❌ No se pudo descargar el video. Link inválido o protegido.")
-    return max(files, key=os.path.getctime)
-
-# Descarga MP3 (audio)
-async def descargar_mp3(link, progress_callback):
-    output = TEMP_PATH + "%(title)s.%(ext)s"
-    geo = "--geo-bypass" if GEO_BYPASS else ""
-    cmd = f'''
-    yt-dlp -x --audio-format {AUDIO_FORMAT} \
-    -N {YTDLP_THREADS} \
-    --no-playlist \
-    --newline \
-    {geo} \
-    -o "{output}" "{link}"
-    '''
-    await run_cmd(cmd, progress_callback)
-
-    files = glob.glob(TEMP_PATH + "*.mp3")
-    if not files:
-        raise Exception("❌ No se pudo descargar el audio. Link inválido o protegido.")
-    return max(files, key=os.path.getctime)
+    loop = asyncio.get_event_loop()
+    # Ejecutar descarga en thread para no bloquear
+    await loop.run_in_executor(None, lambda: yt_dlp.YoutubeDL(ydl_opts).download([url]))
