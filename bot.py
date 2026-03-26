@@ -3,20 +3,34 @@ from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
 import asyncio
 import os
 
-from config import TOKEN
+from config import TOKEN, TEMP_PATH
 from downloader import descargar_mp3, descargar_mp4
-from queue_system import add_to_queue, worker, queue
 
-# 💀 START
+# Cola de descargas
+queue = asyncio.Queue()
+
+async def add_to_queue(job):
+    await queue.put(job)
+
+async def worker():
+    while True:
+        job = await queue.get()
+        try:
+            await job()
+        except Exception as e:
+            print("❌ Error en job:", e)
+        queue.task_done()
+
+# Comando /start
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "💀 KHASAM BOT SYSTEM\n\n"
         "Comandos:\n"
         "/mp3 <link>\n/mp4 <link>\n\n"
-        "⚡ Descarga FLASH + envío directo"
+        "⚡ Descarga ultra rápida + envío directo"
     )
 
-# MP4
+# Comando /mp4
 async def mp4(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("⚠️ Usa: /mp4 <link>")
@@ -46,7 +60,7 @@ async def mp4(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     await add_to_queue(job)
 
-# MP3
+# Comando /mp3
 async def mp3(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not context.args:
         await update.message.reply_text("⚠️ Usa: /mp3 <link>")
